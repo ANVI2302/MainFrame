@@ -147,14 +147,36 @@ export default function App() {
   const { displayed, done } = useTypewriter(typewriterText, 38, 600);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const handleFileSelect = async (file: File) => {
-    if (file && file.type.startsWith('video/')) {
+    if (file && (file.type.startsWith('video/') || file.name.endsWith('.mp4'))) {
       await saveVideoToIDB(file).catch(() => {});
       const blobUrl = URL.createObjectURL(file);
       setVideoSource(blobUrl);
       targetTimeRef.current = 0;
       isSeekingRef.current = false;
+
+      // Automatically persist to project files (public/aria.mp4) so it is bundled for deployment
+      try {
+        setSaveStatus('saving');
+        const res = await fetch('/api/save-video', {
+          method: 'POST',
+          headers: {
+            'Content-Type': file.type || 'video/mp4',
+          },
+          body: file,
+        });
+        if (res.ok) {
+          setSaveStatus('saved');
+          setTimeout(() => setSaveStatus('idle'), 5000);
+        } else {
+          setSaveStatus('error');
+        }
+      } catch (err) {
+        console.error('Error saving video to project files:', err);
+        setSaveStatus('error');
+      }
     }
   };
 
@@ -300,6 +322,32 @@ export default function App() {
           <div className="bg-white text-black px-6 py-4 rounded-2xl shadow-2xl border border-black/10 flex items-center gap-3">
             <span className="text-xl">✳︎</span>
             <span className="text-base font-medium">Drop video here to update A.R.I.A</span>
+          </div>
+        </div>
+      )}
+
+      {/* Deployment Persistence Toast */}
+      {saveStatus !== 'idle' && (
+        <div className="fixed bottom-6 right-6 z-50 pointer-events-auto transition-all animate-bounce">
+          <div className="bg-black/90 backdrop-blur-md text-white text-xs sm:text-sm px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-white/10">
+            {saveStatus === 'saving' && (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Saving aria.mp4 to project files for deployment...</span>
+              </>
+            )}
+            {saveStatus === 'saved' && (
+              <>
+                <span className="text-emerald-400 font-bold">✓</span>
+                <span>aria.mp4 permanently saved to project. Ready to deploy!</span>
+              </>
+            )}
+            {saveStatus === 'error' && (
+              <>
+                <span className="text-amber-400">ℹ︎</span>
+                <span>Loaded in preview. Drop into project public/ folder to commit.</span>
+              </>
+            )}
           </div>
         </div>
       )}
